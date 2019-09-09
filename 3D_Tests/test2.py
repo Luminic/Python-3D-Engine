@@ -36,9 +36,9 @@ E/W | Z
 Not Pictured: Y
 """
 
-class Game:
+class Engine:
     def __init__(self):
-        self.dev_mode = True
+        self.dev_mode = False
         # Pygame Setup
         self.viewport = [0,0,800,1000]
         self.screen = pygame.display.set_mode((self.viewport[2], self.viewport[3]))
@@ -47,9 +47,9 @@ class Game:
         pygame.display.update()
 
         # Seconday Screen Setups
-        self.gameviewport = [800,600]
-        self.gamescreen = pygame.Surface(self.gameviewport)
-        self.gamescreen.fill((200,0,0))
+        self.renderviewport = [800,600]
+        self.renderscreen = pygame.Surface(self.renderviewport)
+        self.renderscreen.fill((200,0,0))
 
         if self.dev_mode:
             self.devviewport = [800,400]
@@ -57,7 +57,7 @@ class Game:
             self.devscreen.fill((0,0,0))
 
         # Mouse Setup
-        pygame.event.set_grab(False) # If the game crashes and this is set to True...
+        pygame.event.set_grab(False) # If the engine crashes and this is set to True the mouse will be forever trapped in the screen
         pygame.mouse.set_visible(True)
 
         # Other Setup
@@ -68,26 +68,25 @@ class Game:
         # 3D Setup
         self.sun_dir = [-0.35,0.5,0.15]
         self.ang = 0
-        self.do_depth_test = False
+        self.do_depth_test = True
         self.do_sorting = not self.do_depth_test # Pointless if depth testing is set to true
         if self.do_depth_test:
-            self.depth_buffer = np.array([[0.0]*self.gameviewport[0]]*self.gameviewport[1])
+            self.depth_buffer = np.array([[0.0]*self.renderviewport[0]]*self.renderviewport[1])
 
 
     def mainloop(self):
         while self.running:
             self.update()
 
-            p.update()
+            cam.update()
 
             if self.dev_mode:
-                self.render_object(g.gamescreen, obj_points, obj_faces=obj_faces,\
-                        translate=[g.gameviewport[i]/2 for i in range(2)],\
-                        devscreen=g.devscreen, devscreen_trans=[g.devviewport[i]/2 for i in range(2)])
+                self.render_object(eng.renderscreen, obj, translate=[eng.renderviewport[i]/2 for i in range(2)],\
+                         devscreen=eng.devscreen,         devscreen_trans=[eng.devviewport[i]/2 for i in range(2)])
             else:
-                self.render_object(g.gamescreen, obj_points, obj_edges, obj_faces, translate=[g.gameviewport[i]/2 for i in range(2)])
+                self.render_object(eng.renderscreen, obj, translate=[eng.renderviewport[i]/2 for i in range(2)])
 
-            self.screen.blit(self.gamescreen, (0,0))
+            self.screen.blit(self.renderscreen, (0,0))
 
             if self.dev_mode: self.screen.blit(self.devscreen, (0,self.viewport[3]-self.devviewport[1]))
 
@@ -99,7 +98,7 @@ class Game:
     def update(self):
         self.events_check()
 
-        self.gamescreen.fill((200,0,0))
+        self.renderscreen.fill((200,0,0))
         if self.dev_mode:
             self.devscreen.fill((0,0,0))
             self.text(self.devscreen, "FPS: "+str(self.clock.get_fps()), [5,5], 25, color=[255,255,255])
@@ -108,19 +107,16 @@ class Game:
         #if self.ang >= 360: self.ang = 0
         #self.sun_dir = mat_rot([[-0.35,0.5,0.15]], math.radians(self.ang), 'y')[0]
 
-    def render_object(self, screen, obj_points, obj_edges=[], obj_faces=[], translate=[0,0], devscreen=False, devscreen_trans=[0,0]):
+    def render_object(self, screen, obj, translate=[0,0], devscreen=False, devscreen_trans=[0,0]):
         """
         Input:  screen is the pygame surface the rendered object should be drawn on
-                obj_points is a list of points
-                obj_edges is a list containing pairs of point indexes (in list form) to be connected by an edge
-                obj_faces has no functionality
 
                 devscreen is the pygame surface the points will be drawn on from a top down orthographic view
 
         Output: None
         """
         obj_rendered_points = []
-        for point in obj_points:
+        for point in obj.points:
             if devscreen:
                 pygame.draw.circle(devscreen, (0,0,235), [round(self.to_dev_coords(point)[i]+devscreen_trans[i]) for i in range(2)], 2)
 
@@ -132,29 +128,29 @@ class Game:
                 #pygame.draw.circle(screen, (0,0,245), point[:2], 2)
 
             else: obj_rendered_points.append(False)
-        #for edge in obj_edges:
+
+        #for edge in obj.edges:
         #    if obj_rendered_points[edge[0]] and obj_rendered_points[edge[1]]:
         #        pygame.draw.aaline(screen, (50,245,245), obj_rendered_points[edge[0]][:2], obj_rendered_points[edge[1]][:2])
 
-        if obj_faces:
+        if obj.faces:
             if self.do_depth_test: self.depth_buffer.fill(0)
             if self.do_sorting:
-                all_face_points_rendered = [[obj_rendered_points[j] for j in o_face]+[obj_points[j] for j in o_face] for o_face in obj_faces]
+                all_face_points_rendered = [[obj_rendered_points[j] for j in o_face]+[obj.points[j] for j in o_face] for o_face in obj.faces]
                 all_face_points_rendered.sort(key=lambda x:-sum([x[i][2] for i in range(3)])/3 if all(x) else 100)
-            for i in range(len(obj_faces)):
+            for i in range(len(obj.faces)):
                 if self.do_sorting:
                     face_points = all_face_points_rendered[i][3:]
                     face_points_rendered = all_face_points_rendered[i][:3]
                 else:
-                    face_points = [obj_points[j] for j in obj_faces[i]]
-                    face_points_rendered = [obj_rendered_points[j] for j in obj_faces[i]]
-
+                    face_points = [obj.points[j] for j in obj.faces[i]]
+                    face_points_rendered = [obj_rendered_points[j] for j in obj.faces[i]]
                 if all(face_points_rendered):
                     face_norm = self.normal_vector(face_points, True)
 
-                    col = self.sun_lighting(self.sun_dir, face_norm, obj_face_colors[i])
-                    #try: obj_faces[i][4] = col
-                    #except IndexError: obj_faces[i].append(col)
+                    col = self.sun_lighting(self.sun_dir, face_norm, obj.face_colors[i])
+                    #try: obj.faces[i][4] = col
+                    #except IndexError: obj.faces[i].append(col)
 
                     """
                     Get the equation of the polygon (which is assumed to be flat so any 3 points on the polygon can be used)
@@ -179,7 +175,7 @@ class Game:
                     if not self.do_depth_test:
                         pygame.draw.polygon(screen, col, [face_points_rendered[i][:2] for i in range(3)])
                     else:
-                        self.depth_test(self.gamescreen, face_points_rendered, face_norm_local, col)
+                        self.depth_test(self.renderscreen, face_points_rendered, face_norm_local, col)
 
     def normal_vector(self, face, normalize=False):
         """
@@ -219,7 +215,6 @@ class Game:
         drawn onto the gamesurface. Otherwise, the pixel is discarded
         """
         a,b,c = face_norm
-
         """
         Figure out the pixels the polygon occupies
         Only works for triangles
@@ -239,7 +234,7 @@ class Game:
         y_lower = face_points[0][1]
         y_upper = face_points[2][1]
         if y_lower < 0: y_lower = 0
-        if y_upper >= self.gameviewport[1]: y_upper = self.gameviewport[1]-1
+        if y_upper >= self.renderviewport[1]: y_upper = self.renderviewport[1]-1
         for y in range(y_lower, y_upper):
             if y < face_points[1][1]:
                 other_side = x_val(y, face_points[0], slopes[1])
@@ -260,7 +255,7 @@ class Game:
                 x_start = math.floor(other_side)
 
             if x_start < 0: x_start = 0
-            if x_end >= self.gameviewport[0]: x_end = self.gameviewport[0]-1
+            if x_end >= self.renderviewport[0]: x_end = self.renderviewport[0]-1
             for x in range(x_start, x_end):
                 d_x = x-face_points[0][0]
                 d_y = y-face_points[0][1]
@@ -283,19 +278,19 @@ class Game:
 
     def point_tranformation(self, point):
         #print(self.yaw)
-        view_point_dist = dist_between3d(p.pos, point.pos)
+        view_point_dist = dist_between3d(cam.pos, point.pos)
 
         #if view_point_dist < self.nearvis: return False # The object is inside of the eye
 
         # Translate the point to its position if the player was at 0,0,0 (also convert it into a matrix from a lsit)
-        point_trans = [[point.pos[i]-p.pos[i] for i in range(3)]]
+        point_trans = [[point.pos[i]-cam.pos[i] for i in range(3)]]
 
         # Rotate the point to its position if the player had a pitch, yaw, and roll of 0
         # Transformation is applied in the order Yaw(Y) Pitch(X) Roll(Z) so to undo it, the opposite must be done
         # It is key to remember that transformations are applied backwards so it all ends up being in the order y,p,r
-        point_rot = mat_rot(point_trans, math.radians(p.yaw),   'y')
-        point_rot = mat_rot(point_rot,   math.radians(p.pitch), 'x')
-        point_rot = mat_rot(point_rot,   math.radians(p.roll),  'z')
+        point_rot = mat_rot(point_trans, math.radians(cam.yaw),   'y')
+        point_rot = mat_rot(point_rot,   math.radians(cam.pitch), 'x')
+        point_rot = mat_rot(point_rot,   math.radians(cam.roll),  'z')
 
         # If the point is behind the camera or at at the same zcoord as the camera it should not be rendered
         # If a point is in front of the camera but behind the viewing plane it will be rendered (but it will be huge)
@@ -306,7 +301,7 @@ class Game:
             However, they cannot be rendered normally as the lines that would normally converge at the point end up diverging instead
             so idk what to do
             """
-            #real_2d_ratio = point_rot[0][2] / p.nearvis
+            #real_2d_ratio = point_rot[0][2] / cam.nearvis
             #point_2d = [point_rot[0][i] / real_2d_ratio for i in range(2)] # The range is only 2 so the z value is discarded
             #point_2d.append(point_rot[0][2]) # The depth value of the point is needed for depth testing
             return False
@@ -314,7 +309,7 @@ class Game:
         # Because the right triangle made by the point and the camera is similar to the right triangle made to the projected point
         # we can divide the point's coords by z_dist / nearvis (nearvis is the dist of the viewing plane from the camera)
         # to get the points coords on the viewing plane (because all the z values will end up being nearvis, only the x&y values are needed)
-        real_2d_ratio = point_rot[0][2] / p.nearvis
+        real_2d_ratio = point_rot[0][2] / cam.nearvis
         point_2d = [point_rot[0][i] / real_2d_ratio for i in range(2)] # The range is only 2 so the z value is discarded
         point_2d.append(point_rot[0][2]) # The depth value of the point is needed for depth testing
 
@@ -344,7 +339,7 @@ class Game:
                 #print(pressed_key)
 
                 # Events that are only called once when the key is pressed
-                if pressed_key == '`': # allow the ~ key be used to pause the game and type commands
+                if pressed_key == '`': # allow the ~ key be used to pause the program and type commands
                     if pygame.event.get_grab():
                         pygame.event.set_grab(False)
                         pygame.mouse.set_visible(True)
@@ -372,13 +367,13 @@ class Game:
             elif event.type == pygame.MOUSEMOTION:
                 if pygame.event.get_grab():
                     if event.rel[0] < 120:
-                        p.yaw += event.rel[0]/p.mouse_sensitivity
-                        p.pitch -= event.rel[1]/(p.mouse_sensitivity*1.5)
+                        cam.yaw += event.rel[0]/cam.mouse_sensitivity
+                        cam.pitch -= event.rel[1]/(cam.mouse_sensitivity*1.5)
 
             elif event.type == pygame.QUIT:
                 self.running = False
 
-class Camera(Game):
+class Camera:
     def __init__(self):
         self.pos = [0,0,-8]
         # Rotation is applied in order: Yaw, Pitch, Roll
@@ -388,7 +383,7 @@ class Camera(Game):
         self.roll = 0
 
         self.view_angle = 60
-        self.nearvis = (g.gameviewport[0]*math.cos(math.radians(self.view_angle/2)))/math.sin(math.radians(self.view_angle)) # Dist of the viewing plane
+        self.nearvis = (eng.renderviewport[0]*math.cos(math.radians(self.view_angle/2)))/math.sin(math.radians(self.view_angle)) # Dist of the viewing plane
         self.farvis = 840 # Not used rn
 
         self.move_dir = [0,0]
@@ -399,27 +394,27 @@ class Camera(Game):
         self.position_rounding = 6
 
     def move(self):
-        if g.key_pressed("w"):
+        if eng.key_pressed("w"):
             self.pos[2] += self.move_dir[0]
             self.pos[0] += self.move_dir[1]
-        if g.key_pressed("a"):
+        if eng.key_pressed("a"):
             self.pos[2] -= self.side_move_dir[0]
             self.pos[0] -= self.side_move_dir[1]
-        if g.key_pressed("s"):
+        if eng.key_pressed("s"):
             self.pos[2] -= self.move_dir[0]
             self.pos[0] -= self.move_dir[1]
-        if g.key_pressed("d"):
+        if eng.key_pressed("d"):
             self.pos[2] += self.side_move_dir[0]
             self.pos[0] += self.side_move_dir[1]
 
-        if g.key_pressed("space"): self.pos[1]      -= self.speed
-        if g.key_pressed("left shift"): self.pos[1] += self.speed
+        if eng.key_pressed("space"): self.pos[1]      -= self.speed
+        if eng.key_pressed("left shift"): self.pos[1] += self.speed
 
-        if g.key_pressed("left"): self.yaw -= 1.5
-        if g.key_pressed("right"): self.yaw += 1.5
+        if eng.key_pressed("left"): self.yaw -= 1.5
+        if eng.key_pressed("right"): self.yaw += 1.5
 
-        if g.key_pressed("q"): self.roll -= 1.5
-        if g.key_pressed("e"): self.roll += 1.5
+        if eng.key_pressed("q"): self.roll -= 1.5
+        if eng.key_pressed("e"): self.roll += 1.5
 
         self.pos = [round(self.pos[i], self.position_rounding) for i in range(3)]
 
@@ -435,7 +430,7 @@ class Camera(Game):
 
         self.move()
 
-        if g.dev_mode: self.draw()
+        if eng.dev_mode: self.draw()
 
     def draw(self):
         # Find the endpoints of the rays
@@ -443,16 +438,34 @@ class Camera(Game):
         ray2_ep = angle_to_coords(self.yaw+self.view_angle/2, radians=False)
 
         # Translate player position so that (0,0) is the middle of the dev screen
-        tmp_pos = [round(g.to_dev_coords(self.pos)[i]+g.devviewport[i]/2) for i in range(0,2)]
+        tmp_pos = [round(eng.to_dev_coords(self.pos)[i]+eng.devviewport[i]/2) for i in range(0,2)]
 
-        pygame.draw.line(g.devscreen, (200,200,0), tmp_pos, [ray1_ep[i]*self.farvis+tmp_pos[i] for i in range(0,2)])
-        pygame.draw.line(g.devscreen, (200,200,0), tmp_pos, [ray2_ep[i]*self.farvis+tmp_pos[i] for i in range(0,2)])
+        pygame.draw.line(eng.devscreen, (200,200,0), tmp_pos, [ray1_ep[i]*self.farvis+tmp_pos[i] for i in range(0,2)])
+        pygame.draw.line(eng.devscreen, (200,200,0), tmp_pos, [ray2_ep[i]*self.farvis+tmp_pos[i] for i in range(0,2)])
 
-        pygame.draw.arc(g.devscreen, (200,200,0),\
+        pygame.draw.arc(eng.devscreen, (200,200,0),\
                         [tmp_pos[0]-self.nearvis,tmp_pos[1]-self.nearvis,self.nearvis*2,self.nearvis*2],\
                         math.radians(-self.yaw-self.view_angle/2), math.radians(-self.yaw+self.view_angle/2))
 
-        pygame.draw.circle(g.devscreen, (245,0,0), tmp_pos, 2)
+        pygame.draw.circle(eng.devscreen, (245,0,0), tmp_pos, 2)
+
+class Object:
+    def __init__(self, filename):
+        try:
+            self.points, self.edges, self.faces = open_obj_file(filename, index=0)
+        except FileNotFoundError:
+            print(".obj file", filename, "could not be opened.")
+            self.points = []
+            self.edges = []
+            self.faces = []
+
+        for i in range(len(self.points)):
+            self.points[i] = Point(self.points[i])
+
+        # Keep the original mesh so the other mesh can be destructively transformed
+        self.orig_points = self.points[:]
+
+        self.face_colors = [[255]*3]*len(self.faces)
 
 class Point:
     def __init__(self, pos):
@@ -468,12 +481,13 @@ class Point:
         pass#return Point([])
 
     def draw(self):
-        if g.dev_mode:
-            tmp_pos = [round(g.to_dev_coords(self.pos)[i]+g.devviewport[i]/2) for i in range(0,2)]
-            pygame.draw.circle(g.devscreen, (0,0,245), tmp_pos, 2)
+        if eng.dev_mode:
+            tmp_pos = [round(eng.to_dev_coords(self.pos)[i]+eng.devviewport[i]/2) for i in range(0,2)]
+            pygame.draw.circle(eng.devscreen, (0,0,245), tmp_pos, 2)
 
-g = Game()
-p = Camera()
+eng = Engine()
+cam = Camera()
+obj = Object("TIE_Fighter.obj")
 
 def x_val(y, point, slope):
     """
@@ -488,12 +502,4 @@ def rc():
     return [255]*3#[random.randint(0,255),random.randint(0,255),random.randint(0,255)]
 
 
-obj_points, obj_edges, obj_faces = open_obj_file("Ray.obj", index=0)
-for i in range(len(obj_points)):
-    obj_points[i] = Point(obj_points[i])
-obj_face_colors = [[255]*3]*len(obj_faces)
-#try:
-g.mainloop()
-#except Exception as e:
-#    pygame.quit()
-#    print(e)
+eng.mainloop()
