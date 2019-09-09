@@ -2,8 +2,7 @@
 3D Engine
 Created by: Lucas Purwosumarto
 Email: lukas.dot.py@gmail.com
-Last Modified: 6 September 2019
-(c)2019 All Rights Reserved
+Last Modified: 8 September 2019
 """
 
 import pygame
