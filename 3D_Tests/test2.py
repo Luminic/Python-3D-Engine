@@ -40,14 +40,14 @@ class Game:
     def __init__(self):
         self.dev_mode = True
         # Pygame Setup
-        self.viewport = [0,0,1200,900]
+        self.viewport = [0,0,800,1000]
         self.screen = pygame.display.set_mode((self.viewport[2], self.viewport[3]))
         self.screen.fill((25,50,185))
         pygame.display.set_caption('3D Engine 2.0')
         pygame.display.update()
 
         # Seconday Screen Setups
-        self.gameviewport = [1200,900]
+        self.gameviewport = [800,600]
         self.gamescreen = pygame.Surface(self.gameviewport)
         self.gamescreen.fill((200,0,0))
 
@@ -68,7 +68,8 @@ class Game:
         # 3D Setup
         self.sun_dir = [-0.35,0.5,0.15]
         self.ang = 0
-        self.do_depth_test = True
+        self.do_depth_test = False
+        self.do_sorting = not self.do_depth_test # Pointless if depth testing is set to true
         if self.do_depth_test:
             self.depth_buffer = np.array([[0.0]*self.gameviewport[0]]*self.gameviewport[1])
 
@@ -137,9 +138,17 @@ class Game:
 
         if obj_faces:
             if self.do_depth_test: self.depth_buffer.fill(0)
+            if self.do_sorting:
+                all_face_points_rendered = [[obj_rendered_points[j] for j in o_face]+[obj_points[j] for j in o_face] for o_face in obj_faces]
+                all_face_points_rendered.sort(key=lambda x:-sum([x[i][2] for i in range(3)])/3 if all(x) else 100)
             for i in range(len(obj_faces)):
-                face_points = [obj_points[j] for j in obj_faces[i]]
-                face_points_rendered = [obj_rendered_points[j] for j in obj_faces[i]]
+                if self.do_sorting:
+                    face_points = all_face_points_rendered[i][3:]
+                    face_points_rendered = all_face_points_rendered[i][:3]
+                else:
+                    face_points = [obj_points[j] for j in obj_faces[i]]
+                    face_points_rendered = [obj_rendered_points[j] for j in obj_faces[i]]
+
                 if all(face_points_rendered):
                     face_norm = self.normal_vector(face_points, True)
 
@@ -479,11 +488,10 @@ def rc():
     return [255]*3#[random.randint(0,255),random.randint(0,255),random.randint(0,255)]
 
 
-obj_points, obj_edges, obj_faces = open_obj_file("cube.obj", index=0)
+obj_points, obj_edges, obj_faces = open_obj_file("Ray.obj", index=0)
 for i in range(len(obj_points)):
     obj_points[i] = Point(obj_points[i])
 obj_face_colors = [[255]*3]*len(obj_faces)
-
 #try:
 g.mainloop()
 #except Exception as e:
